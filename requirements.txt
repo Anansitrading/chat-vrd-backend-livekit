@@ -1,0 +1,16 @@
+# Core FastAPI
+fastapi==0.115.0
+uvicorn[standard]==0.34.0
+python-dotenv==1.0.0
+
+# LiveKit with Cartesia plugin
+livekit==0.17.0
+livekit-agents[cartesia]~=1.2
+
+# Gemini integration
+google-genai>=0.8.0
+openai>=1.0.0
+
+# Logging
+loguru==0.7.2
+pydantic==2.10.0
