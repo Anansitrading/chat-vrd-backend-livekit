@@ -37,6 +37,7 @@ async def entrypoint(ctx: JobContext):
     
     # Start session - connects to LiveKit room via WebRTC
     await session.start(
+        agent=ctx.agent,
         room=ctx.room,
     )
     
