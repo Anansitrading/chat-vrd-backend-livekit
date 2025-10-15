@@ -71,13 +71,13 @@ async def connect(request: ConnectRequest):
         
         # Dispatch agent to this room
         try:
-            await livekit_api.room.create_dispatch(
-                api.CreateRoomDispatchRequest(
+            dispatch = await livekit_api.agent_dispatch.create_dispatch(
+                api.CreateAgentDispatchRequest(
                     room=room_name,
                     agent_name="kijko_vrd_assistant"  # Must match agent.py WorkerOptions
                 )
             )
-            logger.info(f"Agent dispatched to room: {room_name}")
+            logger.info(f"Agent dispatched to room: {room_name} (Dispatch ID: {dispatch.id})")
         except Exception as dispatch_error:
             logger.error(f"Failed to dispatch agent: {dispatch_error}")
             # Continue anyway - room is created
