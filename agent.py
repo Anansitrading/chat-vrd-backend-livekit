@@ -18,7 +18,7 @@ async def entrypoint(ctx: JobContext):
     session = AgentSession(
         # Gemini Live 2.5: Audio IN (STT + language detection), TEXT OUT
         llm=google.beta.realtime.RealtimeModel(
-            model="gemini-2.5-flash-preview",
+            model="gemini-2.5-flash-live-preview",
             modalities=[types.Modality.TEXT],  # TEXT output only (no audio from Gemini)
             temperature=0.7,
             api_key=os.getenv("GEMINI_API_KEY"),  # Explicitly pass API key
