@@ -22,6 +22,7 @@ async def entrypoint(ctx: JobContext):
             modalities=[types.Modality.TEXT],  # TEXT output only (no audio from Gemini)
             temperature=0.7,
             instructions=get_vrd_system_prompt(),
+            api_key=os.getenv("GEMINI_API_KEY"),  # Explicitly pass API key
             # Enable Google Search grounding
             _gemini_tools=[types.Tool(google_search=types.GoogleSearch())],
         ),
@@ -37,7 +38,6 @@ async def entrypoint(ctx: JobContext):
     # Start session - connects to LiveKit room via WebRTC
     await session.start(
         room=ctx.room,
-        participant_identity="kijko_assistant",
     )
     
     logger.info("Agent started: Gemini Live (audio→text+search) → Cartesia TTS (text→audio)")
