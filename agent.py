@@ -43,6 +43,11 @@ async def entrypoint(ctx: JobContext):
         room=ctx.room,
     )
     
+    # Generate initial greeting and begin listening for user input
+    await session.generate_reply(
+        instructions="Greet the user warmly and ask about their video project."
+    )
+    
     logger.info("Agent started: Gemini Live (audio→text+search) → Cartesia TTS (text→audio)")
 
 
