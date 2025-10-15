@@ -28,9 +28,10 @@ async def entrypoint(ctx: JobContext):
         
         # Cartesia TTS: TEXT IN, Audio OUT
         tts=cartesia.TTS(
+            api_key=os.getenv("CARTESIA_API_KEY"),
             model="sonic-2",
             voice=os.getenv("CARTESIA_VOICE_ID", "694f9389-aac1-45b6-b726-9d9369183238"),
-            language="auto",
+            language="en",
         ),
     )
     
