@@ -1,6 +1,6 @@
 import os
 from livekit import agents
-from livekit.agents import AgentSession, JobContext
+from livekit.agents import Agent, AgentSession, JobContext
 from livekit.plugins import google, cartesia
 from google.genai import types
 from prompts import get_vrd_system_prompt
@@ -21,7 +21,6 @@ async def entrypoint(ctx: JobContext):
             model="gemini-2.5-flash-preview",
             modalities=[types.Modality.TEXT],  # TEXT output only (no audio from Gemini)
             temperature=0.7,
-            instructions=get_vrd_system_prompt(),
             api_key=os.getenv("GEMINI_API_KEY"),  # Explicitly pass API key
             # Enable Google Search grounding
             _gemini_tools=[types.Tool(google_search=types.GoogleSearch())],
@@ -35,9 +34,12 @@ async def entrypoint(ctx: JobContext):
         ),
     )
     
+    # Create Agent with instructions
+    agent = Agent(instructions=get_vrd_system_prompt())
+    
     # Start session - connects to LiveKit room via WebRTC
     await session.start(
-        agent=ctx.agent,
+        agent=agent,
         room=ctx.room,
     )
     
