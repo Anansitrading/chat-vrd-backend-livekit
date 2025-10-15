@@ -70,6 +70,7 @@ async def connect(request: ConnectRequest):
         logger.info(f"Room created: {room.name} (SID: {room.sid})")
         
         # Dispatch agent to this room
+        agent_identity = None  # Will be set by LiveKit as 'agent-{random_id}'
         try:
             dispatch = await livekit_api.agent_dispatch.create_dispatch(
                 api.CreateAgentDispatchRequest(
@@ -77,6 +78,9 @@ async def connect(request: ConnectRequest):
                     agent_name="kijko_vrd_assistant"  # Must match agent.py WorkerOptions
                 )
             )
+            # Note: LiveKit auto-generates agent identity as 'agent-{random_id}'
+            # We'll return the pattern to frontend for reliable identification
+            agent_identity = f"agent-"  # Prefix that frontend can match against
             logger.info(f"Agent dispatched to room: {room_name} (Dispatch ID: {dispatch.id})")
         except Exception as dispatch_error:
             logger.error(f"Failed to dispatch agent: {dispatch_error}")
@@ -99,7 +103,8 @@ async def connect(request: ConnectRequest):
         return {
             "room_name": room.name,
             "token": token.to_jwt(),
-            "server_url": os.getenv("LIVEKIT_URL")
+            "server_url": os.getenv("LIVEKIT_URL"),
+            "agent_identity_prefix": agent_identity  # Frontend uses this to identify agent
         }
         
     except Exception as e:
