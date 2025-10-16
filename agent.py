@@ -38,6 +38,24 @@ async def entrypoint(ctx: JobContext):
     # Create Agent with instructions
     agent = Agent(instructions=get_vrd_system_prompt())
     
+    # Register data channel handler for text messages
+    @ctx.room.on("data_received")
+    def on_data_received(data: bytes, participant, topic: str):
+        if topic == 'lk.chat':
+            try:
+                text = data.decode('utf-8')
+                logger.info(f"📨 Received text from {participant.identity}: {text}")
+                
+                # Inject text as if it was spoken input
+                # Create a task to handle async processing
+                import asyncio
+                asyncio.create_task(session.generate_reply(
+                    content=text,
+                    instructions="The user sent this text message. Respond naturally as if they spoke it."
+                ))
+            except Exception as e:
+                logger.error(f"Error handling text message: {e}")
+    
     # Start session - connects to LiveKit room via WebRTC
     await session.start(
         agent=agent,
@@ -49,7 +67,7 @@ async def entrypoint(ctx: JobContext):
         instructions="Greet the user warmly and ask about their video project."
     )
     
-    logger.info("Agent started: Gemini Live (audio→text+search) → Cartesia TTS (text→audio)")
+    logger.info("Agent started: Gemini Live (audio→text+search) → Cartesia TTS (text→audio) + text input handler")
 
 
 if __name__ == "__main__":
