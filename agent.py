@@ -46,13 +46,9 @@ async def entrypoint(ctx: JobContext):
                 text = data.decode('utf-8')
                 logger.info(f"📨 Received text from {participant.identity}: {text}")
                 
-                # Inject text as if it was spoken input
-                # Create a task to handle async processing
-                import asyncio
-                asyncio.create_task(session.generate_reply(
-                    content=text,
-                    instructions="The user sent this text message. Respond naturally as if they spoke it."
-                ))
+                # Inject text directly into RealtimeModel session
+                session.input.send_text(text)
+                logger.info(f"✅ Text sent to RealtimeModel: {text}")
             except Exception as e:
                 logger.error(f"Error handling text message: {e}")
     
