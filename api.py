@@ -12,11 +12,12 @@ app = FastAPI(title="Kijko Voice Agent API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://chat-vrd-livekit.vercel.app",  # New frontend
+        "https://chat-vrd-livekit.vercel.app",  # Production frontend
         "https://chat-vrd.vercel.app",          # Old frontend for comparison
         "http://localhost:3000",
         "http://localhost:5173"
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",  # Allow all Vercel preview deployments
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
