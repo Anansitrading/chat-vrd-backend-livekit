@@ -1,8 +1,7 @@
 import os
 import asyncio
 from livekit import agents
-from livekit.agents import Agent, AgentSession, JobContext
-from livekit.agents.voice import RoomInputOptions, RoomOutputOptions
+from livekit.agents import Agent, AgentSession, JobContext, RoomInputOptions, RoomOutputOptions
 from livekit.plugins import google, cartesia
 from google.genai import types
 from prompts import get_vrd_system_prompt
