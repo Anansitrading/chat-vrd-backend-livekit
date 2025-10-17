@@ -62,7 +62,7 @@ async def entrypoint(ctx: JobContext):
             
             # Add handler for text messages - must manually call generate_reply
             @ctx.room.on("data_received")
-            async def on_data_received(packet):
+            def on_data_received(packet):
                 logger.info(f"📥 RAW DATA RECEIVED - Packet: {packet}")
                 try:
                     topic = packet.topic if hasattr(packet, 'topic') else 'unknown'
@@ -75,12 +75,11 @@ async def entrypoint(ctx: JobContext):
                         logger.info(f"💬 TEXT MESSAGE DECODED: {text}")
                         logger.info(f"🤖 Generating reply for text input...")
                         
-                        # CRITICAL: Must await generate_reply directly (not create_task)
-                        await session.generate_reply(user_input=text)
+                        # CRITICAL: Must manually trigger reply for text input
+                        asyncio.create_task(session.generate_reply(user_input=text))
                         
                 except Exception as e:
                     logger.error(f"Failed to process data packet: {e}")
-                    sentry_sdk.capture_exception(e)
             
             await session.start(
                 agent=agent,
