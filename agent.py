@@ -73,8 +73,9 @@ async def entrypoint(ctx: JobContext):
                     logger.info(f"💬 TEXT MESSAGE DECODED: {text}")
                     logger.info(f"🤖 Generating reply for text input...")
                     
-                    # CRITICAL: Must manually trigger reply for text input
-                    asyncio.create_task(session.generate_reply(user_input=text))
+                    # CRITICAL: generate_reply is NOT async - call it directly
+                    # It returns a SpeechHandle synchronously, not a coroutine
+                    session.generate_reply(user_input=text)
                     
             except Exception as e:
                 logger.error(f"Failed to process data packet: {e}")
