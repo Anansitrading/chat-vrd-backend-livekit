@@ -1,12 +1,59 @@
 import sentry_sdk
 import os
 import asyncio
+import json
 from livekit import agents
 from livekit.agents import Agent, AgentSession, JobContext, RoomInputOptions, RoomOutputOptions
 from livekit.plugins import google, cartesia
 from google.genai import types
 from prompts import get_vrd_system_prompt
 from loguru import logger
+
+# VRD State Management
+class VRDState:
+    """Tracks the current VRD (Video Requirements Document) state for the session"""
+    def __init__(self):
+        self.project_name = ""
+        self.target_audience = ""
+        self.video_length = ""
+        self.style = ""
+        self.tone = ""
+        self.budget = ""
+        self.timeline = ""
+        self.key_messages = []
+        self.sections = []
+        self.technical_requirements = {}
+    
+    def to_dict(self):
+        """Convert to camelCase for frontend"""
+        return {
+            "projectInformation": {
+                "projectTitle": self.project_name
+            },
+            "purposeAndBackground": {
+                "projectContext": "",
+                "currentChallenges": ""
+            },
+            "targetAudience": {
+                "demographics": self.target_audience
+            },
+            "keyMessageAndCTA": {
+                "coreMessage": "",
+                "supportingMessages": self.key_messages
+            },
+            "styleFormAndMoodboard": {
+                "videoStyle": [],
+                "toneMood": []
+            }
+        }
+    
+    def update_from_dict(self, updates: dict):
+        """Update VRD state from frontend updates (camelCase → snake_case)"""
+        if "projectInformation" in updates and "projectTitle" in updates["projectInformation"]:
+            self.project_name = updates["projectInformation"]["projectTitle"]
+        if "targetAudience" in updates and "demographics" in updates["targetAudience"]:
+            self.target_audience = updates["targetAudience"]["demographics"]
+        # Add more field mappings as needed
 
 async def entrypoint(ctx: JobContext):
     """
@@ -34,6 +81,10 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"Agent connecting to room: {ctx.room.name}")
         await ctx.connect()
         
+        # Initialize VRD state for this session
+        vrd_state = VRDState()
+        logger.info("📝 VRD state initialized")
+        
         # Configure AgentSession: Gemini Live for audio/text input + TEXT output, Cartesia for TTS
         session = AgentSession(
             # Gemini Live 2.5: Audio/Text IN, TEXT OUT (Gemini Live DOES support text input!)
@@ -58,7 +109,28 @@ async def entrypoint(ctx: JobContext):
         # Create Agent with instructions
         agent = Agent(instructions=get_vrd_system_prompt())
         
-        # Add handler for text messages - must manually call generate_reply
+        # Helper function to send VRD updates to frontend
+        async def send_vrd_update(updates: dict):
+            """Send VRD updates to frontend via data channel"""
+            try:
+                message = json.dumps({
+                    "type": "vrd-agent-update",
+                    "updates": updates,
+                    "timestamp": asyncio.get_event_loop().time()
+                })
+                
+                await ctx.room.local_participant.publish_data(
+                    message.encode('utf-8'),
+                    reliable=True,
+                    topic='vrd-update'
+                )
+                
+                logger.info(f"✅ Sent VRD update to frontend: {updates}")
+            except Exception as e:
+                logger.error(f"Failed to send VRD update: {e}")
+                sentry_sdk.capture_exception(e)
+        
+        # Add handler for text messages and VRD updates
         @ctx.room.on("data_received")
         def on_data_received(packet):
             logger.info(f"📥 RAW DATA RECEIVED - Packet: {packet}")
@@ -68,7 +140,22 @@ async def entrypoint(ctx: JobContext):
                 data = packet.data
                 logger.info(f"📥 Topic: {topic}, From: {participant}, Data: {data[:100]}")
                 
-                if topic == 'lk.chat':
+                # Handle VRD updates from user
+                if topic == 'vrd-update':
+                    message = json.loads(data.decode('utf-8'))
+                    
+                    if message.get('type') == 'vrd-user-update' and message.get('updates'):
+                        logger.info(f"📝 VRD USER UPDATE: {message['updates']}")
+                        vrd_state.update_from_dict(message['updates'])
+                        
+                        # Inform LLM about the update
+                        update_fields = ", ".join([str(k) for k in message['updates'].keys()])
+                        asyncio.create_task(session.generate_reply(
+                            user_input=f"User updated VRD fields: {update_fields}. Acknowledge the update briefly and continue the conversation naturally."
+                        ))
+                
+                # Handle text chat messages
+                elif topic == 'lk.chat':
                     text = data.decode('utf-8')
                     logger.info(f"💬 TEXT MESSAGE DECODED: {text}")
                     logger.info(f"🤖 Generating reply for text input...")
@@ -79,6 +166,10 @@ async def entrypoint(ctx: JobContext):
             except Exception as e:
                 logger.error(f"Failed to process data packet: {e}")
                 sentry_sdk.capture_exception(e)
+        
+        # Store send_vrd_update function for agent access
+        agent._send_vrd_update = send_vrd_update
+        agent._vrd_state = vrd_state
         
         await session.start(
             agent=agent,
