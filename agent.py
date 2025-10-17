@@ -42,14 +42,19 @@ async def entrypoint(ctx: JobContext):
     
     # Add debug handler for data channel messages BEFORE starting session
     @ctx.room.on("data_received")
-    def on_data_received(data: bytes, participant, topic: str):
-        logger.info(f"📥 RAW DATA RECEIVED - Topic: {topic}, From: {participant.identity}, Data: {data[:100]}")
-        if topic == 'lk.chat':
-            try:
+    def on_data_received(packet):
+        logger.info(f"📥 RAW DATA RECEIVED - Packet: {packet}")
+        try:
+            topic = packet.topic if hasattr(packet, 'topic') else 'unknown'
+            participant = packet.participant if hasattr(packet, 'participant') else 'unknown'
+            data = packet.data
+            logger.info(f"📥 Topic: {topic}, From: {participant}, Data: {data[:100]}")
+            
+            if topic == 'lk.chat':
                 text = data.decode('utf-8')
                 logger.info(f"💬 TEXT MESSAGE DECODED: {text}")
-            except Exception as e:
-                logger.error(f"Failed to decode text: {e}")
+        except Exception as e:
+            logger.error(f"Failed to process data packet: {e}")
     
     # Start session with text and audio input enabled
     await session.start(
