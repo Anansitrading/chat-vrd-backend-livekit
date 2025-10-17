@@ -12,15 +12,9 @@ from loguru import logger
 sentry_sdk.init(
     dsn=os.getenv("SENTRY_DSN"),
     traces_sample_rate=1.0,
-    enable_logs=True,
     profiles_sample_rate=1.0,
     environment=os.getenv("RAILWAY_ENVIRONMENT", "production"),
     release=os.getenv("RAILWAY_GIT_COMMIT_SHA"),
-    
-    # Tag agent-specific traces
-    _experiments={
-        "continuous_profiling_auto_start": True,
-    },
 )
 
 async def entrypoint(ctx: JobContext):

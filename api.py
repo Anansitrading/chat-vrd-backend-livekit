@@ -14,9 +14,6 @@ sentry_sdk.init(
     # Performance monitoring
     traces_sample_rate=1.0,  # Capture 100% of transactions (adjust in production: 0.1 = 10%)
     
-    # Enable logs
-    enable_logs=True,
-    
     # Session tracking
     profiles_sample_rate=1.0,  # Profile performance
     
