@@ -40,7 +40,7 @@ async def entrypoint(ctx: JobContext):
     # Create Agent with instructions
     agent = Agent(instructions=get_vrd_system_prompt())
     
-    # Add debug handler for data channel messages BEFORE starting session
+    # Add handler for text messages - must manually call generate_reply
     @ctx.room.on("data_received")
     def on_data_received(packet):
         logger.info(f"📥 RAW DATA RECEIVED - Packet: {packet}")
@@ -53,10 +53,14 @@ async def entrypoint(ctx: JobContext):
             if topic == 'lk.chat':
                 text = data.decode('utf-8')
                 logger.info(f"💬 TEXT MESSAGE DECODED: {text}")
+                logger.info(f"🤖 Generating reply for text input...")
+                
+                # CRITICAL: Must manually trigger reply for text input
+                asyncio.create_task(session.generate_reply(user_input=text))
+                
         except Exception as e:
             logger.error(f"Failed to process data packet: {e}")
     
-    # Start session with text and audio input enabled
     await session.start(
         agent=agent,
         room=ctx.room,
