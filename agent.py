@@ -8,22 +8,22 @@ from google.genai import types
 from prompts import get_vrd_system_prompt
 from loguru import logger
 
-# Initialize Sentry for Agent Worker  
-sentry_sdk.init(
-    dsn=os.getenv("SENTRY_DSN"),
-    traces_sample_rate=1.0,
-    profiles_sample_rate=1.0,
-    environment=os.getenv("RAILWAY_ENVIRONMENT", "production"),
-    release=os.getenv("RAILWAY_GIT_COMMIT_SHA"),
-)
-
 async def entrypoint(ctx: JobContext):
     """
     Main agent entrypoint - spawned for each new LiveKit room via WebRTC.
     Flow: Gemini Live (audio/text in, LLM, Google Search) → TEXT → Cartesia TTS → audio out
     Supports both audio and text input from users
     """
-    # Set Sentry context tags (without push_scope to avoid event loop issues)
+    # Initialize Sentry INSIDE async function (critical for asyncio compatibility)
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN"),
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+        environment=os.getenv("RAILWAY_ENVIRONMENT", "production"),
+        release=os.getenv("RAILWAY_GIT_COMMIT_SHA"),
+    )
+    
+    # Set Sentry context tags
     sentry_sdk.set_tag("room_name", ctx.room.name)
     sentry_sdk.set_context("livekit", {
         "room": ctx.room.name,
@@ -73,9 +73,9 @@ async def entrypoint(ctx: JobContext):
                     logger.info(f"💬 TEXT MESSAGE DECODED: {text}")
                     logger.info(f"🤖 Generating reply for text input...")
                     
-                    # CRITICAL: generate_reply is NOT async - call it directly
-                    # It returns a SpeechHandle synchronously, not a coroutine
-                    session.generate_reply(user_input=text)
+                    # CRITICAL: Must manually trigger reply for text input
+                    # Restore original working pattern from ffe57b6
+                    asyncio.create_task(session.generate_reply(user_input=text))
                     
             except Exception as e:
                 logger.error(f"Failed to process data packet: {e}")
