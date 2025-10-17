@@ -40,6 +40,17 @@ async def entrypoint(ctx: JobContext):
     # Create Agent with instructions
     agent = Agent(instructions=get_vrd_system_prompt())
     
+    # Add debug handler for data channel messages BEFORE starting session
+    @ctx.room.on("data_received")
+    def on_data_received(data: bytes, participant, topic: str):
+        logger.info(f"📥 RAW DATA RECEIVED - Topic: {topic}, From: {participant.identity}, Data: {data[:100]}")
+        if topic == 'lk.chat':
+            try:
+                text = data.decode('utf-8')
+                logger.info(f"💬 TEXT MESSAGE DECODED: {text}")
+            except Exception as e:
+                logger.error(f"Failed to decode text: {e}")
+    
     # Start session with text and audio input enabled
     await session.start(
         agent=agent,
@@ -56,14 +67,14 @@ async def entrypoint(ctx: JobContext):
         ),
     )
     
-    # The session automatically monitors 'lk.chat' text stream topic when text_enabled=True
-    # No need for manual data_received handler - it's handled internally by AgentSession
+    logger.info("📡 Session started - listening for text on lk.chat topic")
     
     # Optional: Add conversation item listener to log text interactions
     @session.on("conversation_item_added")
     def on_conversation_item(item):
+        logger.info(f"🔔 CONVERSATION ITEM ADDED EVENT")
         if hasattr(item, 'content'):
-            logger.info(f"💬 Conversation item added: {item.content[:100]}...")
+            logger.info(f"💬 Content: {item.content[:100]}...")
     
     # Generate initial greeting
     await session.generate_reply(
