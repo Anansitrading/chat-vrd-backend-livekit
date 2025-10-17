@@ -58,9 +58,27 @@ async def entrypoint(ctx: JobContext):
         # Create Agent with instructions
         agent = Agent(instructions=get_vrd_system_prompt())
         
-        # NOTE: NO manual data_received callback needed!
-        # AgentSession automatically handles lk.chat when text_enabled=True
-        # Adding manual callback causes double-processing conflicts
+        # Add handler for text messages - must manually call generate_reply
+        @ctx.room.on("data_received")
+        def on_data_received(packet):
+            logger.info(f"📥 RAW DATA RECEIVED - Packet: {packet}")
+            try:
+                topic = packet.topic if hasattr(packet, 'topic') else 'unknown'
+                participant = packet.participant if hasattr(packet, 'participant') else 'unknown'
+                data = packet.data
+                logger.info(f"📥 Topic: {topic}, From: {participant}, Data: {data[:100]}")
+                
+                if topic == 'lk.chat':
+                    text = data.decode('utf-8')
+                    logger.info(f"💬 TEXT MESSAGE DECODED: {text}")
+                    logger.info(f"🤖 Generating reply for text input...")
+                    
+                    # CRITICAL: Must manually trigger reply for text input
+                    asyncio.create_task(session.generate_reply(user_input=text))
+                    
+            except Exception as e:
+                logger.error(f"Failed to process data packet: {e}")
+                sentry_sdk.capture_exception(e)
         
         await session.start(
             agent=agent,
