@@ -1,6 +1,8 @@
 import os
+import asyncio
 from livekit import agents
 from livekit.agents import Agent, AgentSession, JobContext
+from livekit.agents.voice import RoomInputOptions, RoomOutputOptions
 from livekit.plugins import google, cartesia
 from google.genai import types
 from prompts import get_vrd_system_prompt
@@ -9,19 +11,20 @@ from loguru import logger
 async def entrypoint(ctx: JobContext):
     """
     Main agent entrypoint - spawned for each new LiveKit room via WebRTC.
-    Flow: Gemini Live (audio in, STT, LLM, Google Search) → TEXT → Cartesia TTS → audio out
+    Flow: Gemini Live (audio/text in, LLM, Google Search) → TEXT → Cartesia TTS → audio out
+    Supports both audio and text input from users
     """
     logger.info(f"Agent connecting to room: {ctx.room.name}")
     await ctx.connect()
     
-    # Configure AgentSession: Gemini Live for audio input + TEXT output, Cartesia for TTS
+    # Configure AgentSession: Gemini Live for audio/text input + TEXT output, Cartesia for TTS
     session = AgentSession(
-        # Gemini Live 2.5: Audio IN (STT + language detection), TEXT OUT
+        # Gemini Live 2.5: Audio/Text IN, TEXT OUT (Gemini Live DOES support text input!)
         llm=google.beta.realtime.RealtimeModel(
             model="gemini-2.5-flash-live-preview",
-            modalities=[types.Modality.TEXT],  # TEXT output only (no audio from Gemini)
+            modalities=[types.Modality.TEXT],  # TEXT output (Cartesia handles TTS)
             temperature=0.7,
-            api_key=os.getenv("GEMINI_API_KEY"),  # Explicitly pass API key
+            api_key=os.getenv("GEMINI_API_KEY"),
             # Enable Google Search grounding
             _gemini_tools=[types.Tool(google_search=types.GoogleSearch())],
         ),
@@ -38,33 +41,38 @@ async def entrypoint(ctx: JobContext):
     # Create Agent with instructions
     agent = Agent(instructions=get_vrd_system_prompt())
     
-    # Register data channel handler for text messages
-    @ctx.room.on("data_received")
-    def on_data_received(data: bytes, participant, topic: str):
-        if topic == 'lk.chat':
-            try:
-                text = data.decode('utf-8')
-                logger.info(f"📨 Received text from {participant.identity}: {text}")
-                
-                # Generate reply using text input (correct parameter is user_input, not content)
-                import asyncio
-                asyncio.create_task(session.generate_reply(user_input=text))
-                logger.info(f"✅ Generating reply for text: {text}")
-            except Exception as e:
-                logger.error(f"Error handling text message: {e}")
-    
-    # Start session - connects to LiveKit room via WebRTC
+    # Start session with text and audio input enabled
     await session.start(
         agent=agent,
         room=ctx.room,
+        # Enable both text and audio input
+        room_input_options=RoomInputOptions(
+            text_enabled=True,  # Enable text input via lk.chat topic
+            audio_enabled=True,  # Keep audio input enabled too
+        ),
+        # Enable text transcription output
+        room_output_options=RoomOutputOptions(
+            transcription_enabled=True,  # Send transcriptions to frontend
+            audio_enabled=True,  # Keep audio output enabled
+        ),
     )
     
-    # Generate initial greeting and begin listening for user input
+    # The session automatically monitors 'lk.chat' text stream topic when text_enabled=True
+    # No need for manual data_received handler - it's handled internally by AgentSession
+    
+    # Optional: Add conversation item listener to log text interactions
+    @session.on("conversation_item_added")
+    def on_conversation_item(item):
+        if hasattr(item, 'content'):
+            logger.info(f"💬 Conversation item added: {item.content[:100]}...")
+    
+    # Generate initial greeting
     await session.generate_reply(
-        instructions="Greet the user warmly and ask about their video project."
+        instructions="Greet the user warmly and ask about their video project. Let them know they can speak or type their responses."
     )
     
-    logger.info("Agent started: Gemini Live (audio→text+search) → Cartesia TTS (text→audio) + text input handler")
+    logger.info("Agent started: Gemini Live (audio+text→LLM+search) → Cartesia TTS (text→audio)")
+    logger.info("✅ Text input enabled via lk.chat topic - users can type or speak!")
 
 
 if __name__ == "__main__":
