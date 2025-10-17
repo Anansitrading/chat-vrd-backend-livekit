@@ -1,10 +1,34 @@
+import sentry_sdk
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from livekit import api
 from pydantic import BaseModel
-import os
 import uuid
 from loguru import logger
+
+# Initialize Sentry FIRST - before creating FastAPI app
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"),
+    
+    # Performance monitoring
+    traces_sample_rate=1.0,  # Capture 100% of transactions (adjust in production: 0.1 = 10%)
+    
+    # Enable logs
+    enable_logs=True,
+    
+    # Session tracking
+    profiles_sample_rate=1.0,  # Profile performance
+    
+    # Send user info (IP, headers) for better debugging
+    send_default_pii=True,
+    
+    # Environment tag
+    environment=os.getenv("RAILWAY_ENVIRONMENT", "production"),
+    
+    # Release tracking (optional)
+    release=os.getenv("RAILWAY_GIT_COMMIT_SHA"),
+)
 
 app = FastAPI(title="Kijko Voice Agent API")
 
@@ -132,6 +156,16 @@ async def list_rooms():
     except Exception as e:
         logger.error(f"Error listing rooms: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/sentry-debug")
+async def trigger_error():
+    """
+    Debug endpoint to test Sentry error tracking.
+    Visit: https://your-api.railway.app/sentry-debug
+    Check Sentry dashboard within ~30 seconds to see the error.
+    """
+    division_by_zero = 1 / 0
 
 
 if __name__ == "__main__":

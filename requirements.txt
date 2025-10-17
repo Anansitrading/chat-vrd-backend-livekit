@@ -10,6 +10,7 @@ livekit-agents[cartesia,google]>=1.2.0
 # Gemini integration
 google-genai>=0.8.0
 
-# Logging
+# Logging and Monitoring
 loguru==0.7.2
 pydantic==2.10.0
+sentry-sdk[fastapi]==2.18.0
