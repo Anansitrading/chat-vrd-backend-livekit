@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY agent.py .
 COPY prompts.py .
+COPY langgraph_client.py .
+COPY voices.py .
 
 # Run the LiveKit agent worker
 CMD python agent.py start
