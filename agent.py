@@ -1,12 +1,92 @@
 import sentry_sdk
 import os
 import asyncio
+import json
 from livekit import agents
 from livekit.agents import Agent, AgentSession, JobContext, RoomInputOptions, RoomOutputOptions
-from livekit.plugins import google, cartesia
-from google.genai import types
+from livekit.plugins import deepgram, cartesia
 from prompts import get_vrd_system_prompt
 from loguru import logger
+from langgraph_client import call_langgraph
+from voices import LANGUAGE_TO_VOICE, DEFAULT_LANGUAGE, DEFAULT_VOICE_ID
+
+
+class LangGraphAdapterAgent(Agent):
+    def __init__(self, session_id: str) -> None:
+        super().__init__(instructions=get_vrd_system_prompt())
+        self.session_id = session_id
+        self.language_code: str | None = None
+
+    async def _process_and_respond(
+        self,
+        user_text: str,
+        language: str | None,
+        session: AgentSession,
+        input_type: str,
+    ) -> None:
+        lang = language or self.language_code or DEFAULT_LANGUAGE
+        self.language_code = lang
+
+        room = session.room
+        local_participant = room.local_participant
+
+        user_payload = json.dumps(
+            {"text": user_text, "speaker": "user", "language": lang}
+        ).encode("utf-8")
+        await local_participant.publish_data(
+            payload=user_payload,
+            reliable=True,
+            topic="lk.transcription",
+        )
+
+        reply_text = await call_langgraph(
+            message=user_text,
+            session_id=self.session_id,
+            language=lang,
+            input_type=input_type,
+        )
+
+        agent_payload = json.dumps(
+            {"text": reply_text, "speaker": "agent", "language": lang}
+        ).encode("utf-8")
+        await local_participant.publish_data(
+            payload=agent_payload,
+            reliable=True,
+            topic="lk.transcription",
+        )
+
+        voice_id = LANGUAGE_TO_VOICE.get(lang, DEFAULT_VOICE_ID)
+        tts = session.tts
+        if tts is not None and hasattr(tts, "update_options"):
+            tts.update_options(voice=voice_id, language=lang)
+
+        session.say(
+            reply_text,
+            allow_interruptions=True,
+            add_to_chat_ctx=True,
+        )
+
+    async def on_turn(self, turn, session: AgentSession) -> None:
+        text = getattr(turn, "transcript", "") or getattr(turn, "text", "")
+        if not text:
+            return
+        language = getattr(turn, "language", None)
+        await self._process_and_respond(
+            user_text=text,
+            language=language,
+            session=session,
+            input_type="voice",
+        )
+
+    async def handle_chat_message(self, text: str, session: AgentSession) -> None:
+        language = self.language_code or DEFAULT_LANGUAGE
+        await self._process_and_respond(
+            user_text=text,
+            language=language,
+            session=session,
+            input_type="text",
+        )
+
 
 async def entrypoint(ctx: JobContext):
     """
@@ -36,27 +116,21 @@ async def entrypoint(ctx: JobContext):
         
         # Configure AgentSession: Gemini Live for audio/text input + TEXT output, Cartesia for TTS
         session = AgentSession(
-            # Gemini Live 2.5: Audio/Text IN, TEXT OUT (Gemini Live DOES support text input!)
-            llm=google.beta.realtime.RealtimeModel(
-                model="gemini-2.5-flash-live-preview",
-                modalities=[types.Modality.TEXT],  # TEXT output (Cartesia handles TTS)
-                temperature=0.7,
-                api_key=os.getenv("GEMINI_API_KEY"),
-                # Enable Google Search grounding
-                _gemini_tools=[types.Tool(google_search=types.GoogleSearch())],
+            stt=deepgram.STT(
+                model="nova-3",
+                language="multi",
             ),
-            
-            # Cartesia TTS: TEXT IN, Audio OUT
             tts=cartesia.TTS(
                 api_key=os.getenv("CARTESIA_API_KEY"),
                 model="sonic-2",
-                voice=os.getenv("CARTESIA_VOICE_ID", "694f9389-aac1-45b6-b726-9d9369183238"),
+                voice=DEFAULT_VOICE_ID,
                 language="en",
             ),
+            llm=None,
         )
         
         # Create Agent with instructions
-        agent = Agent(instructions=get_vrd_system_prompt())
+        agent = LangGraphAdapterAgent(session_id=ctx.room.name)
         
         # Add handler for text messages - must manually call generate_reply
         @ctx.room.on("data_received")
@@ -71,10 +145,10 @@ async def entrypoint(ctx: JobContext):
                 if topic == 'lk.chat':
                     text = data.decode('utf-8')
                     logger.info(f"💬 TEXT MESSAGE DECODED: {text}")
-                    logger.info(f"🤖 Generating reply for text input...")
+                    logger.info("🤖 Routing text input through LangGraph adapter...")
                     
                     # CRITICAL: Must manually trigger reply for text input
-                    asyncio.create_task(session.generate_reply(user_input=text))
+                    asyncio.create_task(agent.handle_chat_message(text, session))
                     
             except Exception as e:
                 logger.error(f"Failed to process data packet: {e}")
@@ -105,11 +179,11 @@ async def entrypoint(ctx: JobContext):
                 logger.info(f"💬 Content: {item.content[:100]}...")
         
         # Generate initial greeting
-        await session.generate_reply(
-            instructions="Greet the user warmly and ask about their video project. Let them know they can speak or type their responses."
+        logger.info(
+            "Initial greeting will be generated by LangGraph on first user input."
         )
         
-        logger.info("Agent started: Gemini Live (audio+text→LLM+search) → Cartesia TTS (text→audio)")
+        logger.info("Agent started: Deepgram STT → LangGraph → Cartesia TTS")
         logger.info("✅ Text input enabled via lk.chat topic - users can type or speak!")
         
     except Exception as e:

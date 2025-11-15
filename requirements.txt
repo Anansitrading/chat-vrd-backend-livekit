@@ -3,12 +3,16 @@ fastapi==0.115.0
 uvicorn[standard]==0.34.0
 python-dotenv==1.0.0
 
-# LiveKit with Cartesia and Google plugins
+# LiveKit with Cartesia, Google, and Deepgram plugins
 livekit>=1.0.12,<2
 livekit-agents[cartesia,google]>=1.2.0
+livekit-plugins-deepgram>=1.0.0
 
 # Gemini integration
 google-genai>=0.8.0
+
+# HTTP client for LangGraph backend
+httpx==0.27.0
 
 # Logging and Monitoring
 loguru==0.7.2
